@@ -43,9 +43,47 @@ import() {
     for script in *.sh; do
         # shellcheck disable=SC1090
         BRUSH_SOURCED=1 source "$script"
+
+        if [[ -n "${public[*]}" ]]; then
+            for function in "${public[@]}"; do
+                eval "$function() { ${__brush_functions[$function]} \"\$*\"; }"
+            done
+        fi
+
+        unset public
     done
 
     popd >/dev/null
+}
+
+declare -A __brush_functions
+
+define() {
+    local function="$1"
+    local hash code
+
+    code="$(declare -f "$function")"
+    hash="__brush_$(echo "$code" | xxhsum | cut -d' ' -f1)"
+
+    unset -f "$function"
+
+    __brush_functions["$function"]="$hash"
+
+    substitutions=()
+
+    # rename function to hash
+    substitutions+=(
+        "-e s/^${function}/${hash}/g"
+    )
+
+    # substitute dependencies
+    for function in "${!__brush_functions[@]}"; do
+        substitutions+=(
+            "-e s/${function}/${__brush_functions[$function]}/g"
+        )
+    done
+
+    eval "$(echo "$code" | sed "${substitutions[@]}")"
 }
 
 is_version() {
@@ -72,6 +110,13 @@ bootstrap_brush() {
     declare -f import
     echo "export -f import"
 
+    # expose define function
+    declare -f define
+    echo "export -f define"
+
+    # create associative array for function hashes
+    echo "declare -A __brush_functions"
+
     # configure brush deps dir
     echo "export BRUSH_DEPS=\"$(brush_dep_dir)\""
 
@@ -91,8 +136,7 @@ main() {
 }
 
 if sourced; then
-    echo "Brush is not meant to be sourced, please run it as a script." >&2
-    exit 1
+    : # we are being sourced, likely by a brush in a recursive import
 else
     main "$@"
 fi
