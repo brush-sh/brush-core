@@ -4,7 +4,9 @@
 sourced() {
     local sourced=0
 
-    if [[ -n "${ZSH_VERSION:-}" ]]; then
+    if [[ -n "${BRUSH_SOURCED:-}" ]]; then
+        BRUSH_SOURCED=1
+    elif [[ -n "${ZSH_VERSION:-}" ]]; then
         case $ZSH_EVAL_CONTEXT in *:file) sourced=1 ;; esac
     elif [[ -n "$BASH_VERSION" ]]; then
         (return 0 2>/dev/null) && sourced=1
@@ -15,14 +17,11 @@ sourced() {
     return $sourced
 }
 
-import() (
-    # strict mode
-    set -euo pipefail
-
+import() {
     local import="$1"
     local name="${import%%@*}"
     local version="${import##*@}"
-    local install_dir=${BRUSH_DEPS:-.brush/deps}
+    local install_dir="$BRUSH_DEPS"
 
     if [[ ! "$version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
         echo "Invalid version specified during import: $import" >&2
@@ -33,39 +32,67 @@ import() (
     local dir="$install_dir/$lib"
 
     if [[ ! -d "$dir" ]]; then
+        echo "Downloading $lib" >&2
         mkdir -p "$dir"
         curl -sL "https://github.com/${name}/archive/refs/tags/${version}.tar.gz" |
             tar -xz -C "$dir" --strip-components=1
     fi
 
-    for file in "$dir"/*.sh; do
+    pushd "$dir" >/dev/null
+
+    for script in *.sh; do
         # shellcheck disable=SC1090
-        source "$file"
+        BRUSH_SOURCED=1 source "$script"
     done
-)
+
+    popd >/dev/null
+}
 
 is_version() {
     [[ "$1" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
 }
 
-bootstrap() {
+brush_dep_dir() {
+    if [[ -n "${BRUSH_DEPS:-}" ]]; then
+        echo "$BRUSH_DEPS"
+    elif git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+        echo "$(git rev-parse --show-toplevel)/.brush/deps"
+    else
+        echo "${HOME}/.cache/brush/deps"
+    fi
+}
+
+bootstrap_brush() {
     local version="$1"
 
-    declare -f import
+    # force use of strict mode
+    set -euo pipefail
 
-    echo "import \"expelledboy/brush@$1\""
+    # expose import function
+    declare -f import
+    echo "export -f import"
+
+    # configure brush deps dir
+    echo "export BRUSH_DEPS=\"$(brush_dep_dir)\""
+
+    # import brush itself
+    echo "import \"expelledboy/brush@$version\""
 }
 
 main() {
+    local version="$1"
+
     if is_version "$1"; then
-        echo "Bootstraping brush $1" >&2
-        bootstrap "$1"
+        bootstrap_brush "$1"
     else
         echo "Usage: brush <version>" >&2
         exit 1
     fi
 }
 
-if ! sourced; then
+if sourced; then
+    echo "Brush is not meant to be sourced, please run it as a script." >&2
+    exit 1
+else
     main "$@"
 fi

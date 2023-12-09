@@ -1,3 +1,3 @@
 #!/usr/bin/env bash
 
-source bin/brush.sh
+source bin/timestamp.sh

@@ -141,6 +141,6 @@ To install the `brush` command, we can just download it from github, and add it
 somewhere on the `$PATH`.
 
 ```bash {cmd}
-$ curl -sL https://raw.githubusercontent.com/expelledboy/brush/master/brush.sh > /usr/local/bin/brush
+$ curl -sL https://raw.githubusercontent.com/expelledboy/brush/master/bin/brush.sh > /usr/local/bin/brush
 $ chmod +x /usr/local/bin/brush
 ```
